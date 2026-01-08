@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+  qwen-image:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: qwen-image:latest
+    container_name: qwen-image-demo
+
+    # GPU configuration (requires nvidia-docker)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all  # Use all available GPUs, or specify count: 1 for single GPU
+              capabilities: [gpu]
+
+    # Environment variables
+    environment:
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - MODEL_PATH=${MODEL_PATH:-/app/models/Qwen-Image}
+      - NUM_GPUS_TO_USE=${NUM_GPUS_TO_USE:-1}
+      - TASK_QUEUE_SIZE=${TASK_QUEUE_SIZE:-100}
+      - TASK_TIMEOUT=${TASK_TIMEOUT:-300}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
+      # Memory optimization for low VRAM GPUs
+      - PYTORCH_ALLOC_CONF=expandable_segments:True
+      - ENABLE_CPU_OFFLOAD=${ENABLE_CPU_OFFLOAD:-true}
+      - LOW_VRAM_MODE=${LOW_VRAM_MODE:-true}
+
+    # Port mapping
+    ports:
+      - "7860:7860"
+
+    # Volume mounts
+    volumes:
+      # Cache for Hugging Face models
+      - huggingface-cache:/root/.cache/huggingface
+      # Mount local models directory (for offline use)
+      - ./models:/app/models
+      # Mount local src directory for development (optional, comment out for production)
+      - ./src:/app/src
+      # Output directory for generated images (optional)
+      - ./outputs:/app/outputs
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Shared memory size (important for PyTorch dataloaders)
+    shm_size: '8gb'
+
+    # Network mode
+    networks:
+      - qwen-network
+
+  # Optional: Add an edit demo service
+  qwen-image-edit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: qwen-image:latest
+    container_name: qwen-image-edit-demo
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    environment:
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - MODEL_PATH=${MODEL_PATH_EDIT:-/app/models/Qwen-Image-Edit-2511}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7861
+      # Memory optimization for low VRAM GPUs
+      - PYTORCH_ALLOC_CONF=expandable_segments:True
+      - ENABLE_CPU_OFFLOAD=${ENABLE_CPU_OFFLOAD:-true}
+      - LOW_VRAM_MODE=${LOW_VRAM_MODE:-true}
+
+    ports:
+      - "7861:7861"
+
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+      - ./models:/app/models
+      - ./src:/app/src
+      - ./outputs:/app/outputs
+
+    restart: unless-stopped
+
+    shm_size: '8gb'
+
+    # Override command to run edit demo
+    command: ["python", "src/examples/edit_demo.py"]
+
+    networks:
+      - qwen-network
+
+    # Disable by default (uncomment 'profiles' line to enable)
+    profiles:
+      - edit
+
+# Define volumes
+volumes:
+  huggingface-cache:
+    driver: local
+
+# Define networks
+networks:
+  qwen-network:
+    driver: bridge

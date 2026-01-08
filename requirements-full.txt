@@ -1,0 +1,5 @@
+# Full requirements including optional dependencies
+-r requirements.txt
+
+# DashScope API for prompt enhancement (optional - requires API key)
+dashscope
