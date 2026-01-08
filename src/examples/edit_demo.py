@@ -2,23 +2,52 @@ import gradio as gr
 import numpy as np
 import random
 import torch
-import spaces
+import os
 
-from diffusers import QwenImageEditPipeline
+from diffusers import QwenImageEditPlusPipeline
 from tools.prompt_utils import polish_edit_prompt
 
 # --- Model Loading ---
 dtype = torch.bfloat16
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Load the model pipeline
-pipe = QwenImageEditPipeline.from_pretrained("Qwen/Qwen-Image-Edit", torch_dtype=dtype).to(device)
+# Support local model path or HuggingFace model ID
+model_path = os.environ.get("MODEL_PATH", "/app/models/Qwen-Image-Edit-2511")
+print(f"Loading edit model from: {model_path}")
+
+# Check for low VRAM mode
+enable_cpu_offload = os.environ.get("ENABLE_CPU_OFFLOAD", "false").lower() == "true"
+low_vram_mode = os.environ.get("LOW_VRAM_MODE", "false").lower() == "true"
+print(f"Loading with CPU offload={enable_cpu_offload}, low_vram={low_vram_mode}")
+
+# Load the model pipeline (2511 uses QwenImageEditPlusPipeline)
+pipe = QwenImageEditPlusPipeline.from_pretrained(model_path, torch_dtype=dtype)
+
+if enable_cpu_offload:
+    print("Enabling sequential CPU offload for low VRAM")
+    pipe.enable_sequential_cpu_offload()
+else:
+    pipe = pipe.to(device)
+
+# Enable memory optimizations if available
+if hasattr(pipe, 'enable_attention_slicing'):
+    pipe.enable_attention_slicing(1)
+    print("Enabled attention slicing")
+
+if hasattr(pipe, 'vae') and hasattr(pipe.vae, 'enable_slicing'):
+    pipe.vae.enable_slicing()
+    print("Enabled VAE slicing")
+
+if low_vram_mode and hasattr(pipe, 'vae') and hasattr(pipe.vae, 'enable_tiling'):
+    pipe.vae.enable_tiling()
+    print("Enabled VAE tiling")
+
+print(f"Model loaded successfully on {device}")
 
 # --- UI Constants and Helpers ---
 MAX_SEED = np.iinfo(np.int32).max
 
 # --- Main Inference Function (with hardcoded negative prompt) ---
-@spaces.GPU(duration=300)
 def infer(
     image,
     prompt,
@@ -152,4 +181,6 @@ with gr.Blocks(css=css) as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch()
+    server_name = os.environ.get("GRADIO_SERVER_NAME", "0.0.0.0")
+    server_port = int(os.environ.get("GRADIO_SERVER_PORT", "7861"))
+    demo.launch(server_name=server_name, server_port=server_port)

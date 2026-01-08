@@ -170,15 +170,31 @@ def polish_prompt_zh(original_prompt):
 
 
 def rewrite(input_prompt):
-    lang = get_caption_language(input_prompt)
-    if lang == 'zh':
-        return polish_prompt_zh(input_prompt)
-    elif lang == 'en':
+    """Rewrite prompt with enhancement. Falls back to original if API key not available."""
+    api_key = os.environ.get('DASHSCOPE_API_KEY')
+    if not api_key:
+        print("[INFO] DASHSCOPE_API_KEY not set, skipping prompt enhancement")
+        return input_prompt
 
-        return polish_prompt_en(input_prompt)
+    try:
+        lang = get_caption_language(input_prompt)
+        if lang == 'zh':
+            return polish_prompt_zh(input_prompt)
+        elif lang == 'en':
+            return polish_prompt_en(input_prompt)
+    except Exception as e:
+        print(f"[WARNING] Prompt enhancement failed: {e}, using original prompt")
+        return input_prompt
 
 
 def polish_edit_prompt(prompt, img):
+    """Polish edit prompt with API. Falls back to original if API key not available."""
+    # Check if API key is available
+    api_key = os.environ.get('DASHSCOPE_API_KEY') or os.environ.get('DASH_API_KEY')
+    if not api_key:
+        print("[INFO] DASHSCOPE_API_KEY/DASH_API_KEY not set, skipping edit prompt enhancement")
+        return prompt
+
     EDIT_SYSTEM_PROMPT = '''
 # Edit Prompt Enhancer
 You are a professional edit prompt enhancer. Your task is to generate a direct and specific edit prompt based on the user-provided instruction and the image input conditions.  
@@ -239,13 +255,13 @@ Please strictly follow the enhancing rules below:
    "Rewritten": "..."
 }
 '''
-    prompt = f"{EDIT_SYSTEM_PROMPT}\n\nUser Input: {prompt}\n\nRewritten Prompt:"
-    success=False
-    while not success:
+    full_prompt = f"{EDIT_SYSTEM_PROMPT}\n\nUser Input: {prompt}\n\nRewritten Prompt:"
+    max_retries = 3
+    retry_count = 0
+
+    while retry_count < max_retries:
         try:
-            result = edit_api(prompt, [img])
-            # print(f"Result: {result}")
-            # print(f"Polished Prompt: {polished_prompt}")
+            result = edit_api(full_prompt, [img])
             if isinstance(result, str):
                 result = result.replace('```json','')
                 result = result.replace('```','')
@@ -256,7 +272,10 @@ Please strictly follow the enhancing rules below:
             polished_prompt = result['Rewritten']
             polished_prompt = polished_prompt.strip()
             polished_prompt = polished_prompt.replace("\n", " ")
-            success = True
+            return polished_prompt
         except Exception as e:
-            print(f"[Warning] Error during API call: {e}")
-    return polished_prompt
+            retry_count += 1
+            print(f"[WARNING] Edit prompt enhancement failed (attempt {retry_count}/{max_retries}): {e}")
+            if retry_count >= max_retries:
+                print(f"[WARNING] Max retries reached, using original prompt")
+                return prompt

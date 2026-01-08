@@ -18,7 +18,8 @@ from diffusers import DiffusionPipeline
 import torch
 from tools.prompt_utils import rewrite
 
-model_repo_id = "Qwen/Qwen-Image"
+# Support local model path
+model_repo_id = os.environ.get("MODEL_PATH", "Qwen/Qwen-Image")
 MAX_SEED = np.iinfo(np.int32).max
 MAX_IMAGE_SIZE = 1440
 
@@ -47,13 +48,48 @@ class GPUWorker:
                 torch_dtype = torch.bfloat16
             else:
                 torch_dtype = torch.float32
-            
-            self.pipe = DiffusionPipeline.from_pretrained(self.model_repo_id, torch_dtype=torch_dtype)
-            self.pipe = self.pipe.to(self.device)
+
+            # Check for low VRAM mode
+            enable_cpu_offload = os.environ.get("ENABLE_CPU_OFFLOAD", "false").lower() == "true"
+            low_vram_mode = os.environ.get("LOW_VRAM_MODE", "false").lower() == "true"
+
+            print(f"GPU {self.gpu_id}: Loading model with CPU offload={enable_cpu_offload}, low_vram={low_vram_mode}")
+
+            # Load model (fp16 variant is optional and may not exist)
+            load_kwargs = {"torch_dtype": torch_dtype}
+            self.pipe = DiffusionPipeline.from_pretrained(
+                self.model_repo_id,
+                **load_kwargs
+            )
+
+            if enable_cpu_offload:
+                # Enable sequential CPU offload to reduce VRAM usage
+                print(f"GPU {self.gpu_id}: Enabling sequential CPU offload for low VRAM")
+                self.pipe.enable_sequential_cpu_offload(gpu_id=self.gpu_id)
+            else:
+                self.pipe = self.pipe.to(self.device)
+
+            # Enable memory efficient attention if available
+            if hasattr(self.pipe, 'enable_attention_slicing'):
+                self.pipe.enable_attention_slicing(1)
+                print(f"GPU {self.gpu_id}: Enabled attention slicing")
+
+            # Enable VAE slicing to reduce memory
+            if hasattr(self.pipe, 'enable_vae_slicing'):
+                self.pipe.enable_vae_slicing()
+                print(f"GPU {self.gpu_id}: Enabled VAE slicing")
+
+            # Enable VAE tiling for very low memory
+            if low_vram_mode and hasattr(self.pipe, 'enable_vae_tiling'):
+                self.pipe.enable_vae_tiling()
+                print(f"GPU {self.gpu_id}: Enabled VAE tiling")
+
             print(f"GPU {self.gpu_id} model initialized successfully")
             return True
         except Exception as e:
             print(f"GPU {self.gpu_id} model initialization failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def process_task(self, task):
