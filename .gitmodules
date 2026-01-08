@@ -1,0 +1,6 @@
+[submodule "models/Qwen-Image-2512"]
+	path = models/Qwen-Image-2512
+	url = https://huggingface.co/spaces/Qwen/Qwen-Image-2512
+[submodule "models/Qwen-Image"]
+	path = models/Qwen-Image
+	url = https://huggingface.co/spaces/Qwen/Qwen-Image
