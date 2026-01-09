@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: qwen-image:latest
+    image: lunanightbyte/qwen-image:latest
     container_name: qwen-image-demo
 
     # GPU configuration (requires nvidia-docker)
@@ -19,6 +19,7 @@ services:
 
     # Environment variables
     environment:
+      - OPTIMIZATION_MODE=quantized
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
       - MODEL_PATH=${MODEL_PATH:-/app/models/Qwen-Image}
       - NUM_GPUS_TO_USE=${NUM_GPUS_TO_USE:-1}
@@ -70,7 +71,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: qwen-image:latest
+    image: lunanightbyte/qwen-image:latest
     container_name: qwen-image-edit-demo
 
     deploy:
@@ -82,6 +83,7 @@ services:
               capabilities: [gpu]
 
     environment:
+      - OPTIMIZATION_MODE=quantized
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
       - MODEL_PATH=${MODEL_PATH_EDIT:-/app/models/Qwen-Image-Edit-2511}
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}

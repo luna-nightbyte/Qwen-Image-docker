@@ -19,3 +19,7 @@ accelerate>=0.20.0
 safetensors>=0.3.0
 
 spaces
+xformers
+
+bitsandbytes>=0.41.0
+
